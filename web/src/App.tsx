@@ -1,6 +1,11 @@
 import { useRef, useState, type ReactElement } from "react";
 import "./App.css";
 
+// Empty string in dev relies on Vite's /api proxy (vite.config.ts) to
+// localhost:8787. In production there's no dev proxy, so the deployed
+// frontend needs the backend's real URL injected at build time.
+const API_BASE = import.meta.env.VITE_API_BASE ?? "";
+
 type Status = "idle" | "recording" | "transcribing" | "cleaning" | "done" | "error";
 type View = "clean" | "verbatim";
 
@@ -77,13 +82,13 @@ export default function App() {
       setStatus("transcribing");
       const form = new FormData();
       form.append("audio", blob, "recording.webm");
-      const transcribeRes = await fetch("/api/transcribe", { method: "POST", body: form });
+      const transcribeRes = await fetch(`${API_BASE}/api/transcribe`, { method: "POST", body: form });
       if (!transcribeRes.ok) throw new Error("Transcription failed.");
       const { verbatim: verbatimText } = await transcribeRes.json();
       setVerbatim(verbatimText);
 
       setStatus("cleaning");
-      const cleanRes = await fetch("/api/clean", {
+      const cleanRes = await fetch(`${API_BASE}/api/clean`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ verbatim: verbatimText }),
