@@ -4,7 +4,10 @@ Voice input transcription app that removes filler words while keeping the origin
 
 ## Status
 
-Working MVP skeleton: record in the browser → verbatim transcript (Whisper) → context-aware clean pass (Claude) → Clean/Verbatim toggle with removed spans marked, never silently discarded. Covers the P0 core loop from Epics A, B1, C2, and E1 in the PRD.
+Working MVP skeleton, deployed: record in the browser → verbatim transcript (Whisper) → context-aware clean pass (Claude) → Clean/Verbatim toggle with removed spans marked, never silently discarded. Covers the P0 core loop from Epics A, B1, C2, and E1 in the PRD.
+
+**Live demo:** https://clarity-voice-transcription.vercel.app
+(backend: Render, cold-starts on the free tier — first request after idle can take ~30s)
 
 ## Architecture
 
