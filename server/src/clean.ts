@@ -132,6 +132,8 @@ export function applyRemovals(verbatim: string, spans: string[]): CleanResult {
 
   clean = clean
     .replace(/\s+([,.!?])/g, "$1")
+    .replace(/,\s*([.!?])/g, "$1") // dangling comma left behind when a removed span didn't include it, e.g. "recording, ." -> "recording."
+    .replace(/([,.!?])\1+/g, "$1") // collapse repeated punctuation, e.g. ",," or ".."
     .replace(/\s{2,}/g, " ")
     .replace(/^[,.\s]+/, "")
     .trim();
