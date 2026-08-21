@@ -1,0 +1,101 @@
+.app {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 48px 20px;
+  text-align: left;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 2rem;
+}
+
+.tagline {
+  color: var(--text, #888);
+  margin-top: 4px;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 32px 0;
+}
+
+.record-btn {
+  font-size: 1rem;
+  padding: 12px 24px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  background: #dc2626;
+  color: white;
+  font-weight: 600;
+}
+
+.record-btn.recording {
+  background: #7f1d1d;
+  animation: pulse 1.4s infinite;
+}
+
+.record-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.status-note {
+  color: #888;
+}
+
+.error {
+  color: #dc2626;
+}
+
+.result {
+  margin-top: 24px;
+  border: 1px solid #333;
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.view-toggle {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.view-toggle button {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid #444;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+}
+
+.view-toggle button.active {
+  background: #444;
+  font-weight: 600;
+}
+
+.transcript {
+  line-height: 1.6;
+  font-size: 1.05rem;
+  white-space: pre-wrap;
+}
+
+.removed-span {
+  color: #888;
+  opacity: 0.7;
+}
+
+.disclaimer {
+  margin-top: 16px;
+  font-size: 0.85rem;
+  color: #888;
+}
