@@ -26,6 +26,11 @@ export async function transcribeAudio(buffer: Buffer, filename: string): Promise
   const result = await getClient().audio.transcriptions.create({
     file,
     model: "whisper-1",
+    // Whisper's training data rarely included transcribed disfluencies, so
+    // by default it silently drops "um"/"uh" even when they're clearly
+    // spoken — this in-context example biases it toward keeping them, since
+    // there's no explicit "verbatim mode" flag on this API.
+    prompt: "Um, so, like, this is, uh, a verbatim transcript that keeps every filler word exactly as spoken, you know.",
   });
   return result.text;
 }
