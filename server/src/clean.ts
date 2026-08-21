@@ -54,6 +54,10 @@ Example — "All right, so I just, you know, want to make sure it works":
 - WRONG: one span "so I just, you know, want" (deletes the real words "I just" and "want")
 - RIGHT: two spans "so " and ", you know," (keeps "I just" and "want" intact)
 
+"so" is ambiguous — decide based on function, not just position:
+- Discourse "so" (filler, remove): "Hey, so, I am starting to trade..." — just eases into the statement, no causal link to what follows. Deleting it changes nothing.
+- Causal "so" (keep): "The setup was invalidated, so I closed the position." — expresses "as a result of"; deleting it breaks the logical link between the two clauses.
+
 Return your answer only via the remove_fillers tool. Each entry in spans_to_remove must be copied EXACTLY (character for character) from the transcript you were given, so it can be located with a plain substring search. If nothing should be removed, return an empty array.`;
 
 // Naive stand-in for the contextual disambiguation Claude does (PRD B4) —
