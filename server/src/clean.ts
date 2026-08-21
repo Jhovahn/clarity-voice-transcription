@@ -50,7 +50,28 @@ Do NOT remove:
 
 Return your answer only via the remove_fillers tool. Each entry in spans_to_remove must be copied EXACTLY (character for character) from the transcript you were given, so it can be located with a plain substring search. If nothing should be removed, return an empty array.`;
 
+// Naive stand-in for the contextual disambiguation Claude does (PRD B4) —
+// matches filler words regardless of meaningful use, so it will over-remove
+// (e.g. "I like pizza"). Good enough to exercise the UI pipeline, not to
+// evaluate cleanup quality.
+const MOCK_FILLER_PATTERN =
+  /\b(um+|uh+|erm?)\b,?\s*|\b(\w+)\s+\2\b(?=\s)|,?\s*\b(like|you know|basically|actually|kind of|sort of)\b,?\s*/gi;
+
+function mockClean(verbatim: string): CleanResult {
+  const spans: string[] = [];
+  let match: RegExpExecArray | null;
+  const pattern = new RegExp(MOCK_FILLER_PATTERN);
+  while ((match = pattern.exec(verbatim)) !== null) {
+    spans.push(match[0]);
+  }
+  return applyRemovals(verbatim, spans);
+}
+
 export async function cleanTranscript(verbatim: string): Promise<CleanResult> {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    console.warn("[clean] ANTHROPIC_API_KEY not set — using naive regex mock instead of Claude.");
+    return mockClean(verbatim);
+  }
   const message = await getClient().messages.create({
     model: "claude-sonnet-5",
     max_tokens: 2048,
@@ -98,6 +119,14 @@ export function applyRemovals(verbatim: string, spans: string[]): CleanResult {
     clean += verbatim.slice(cursor, m.start);
     removedSpans.push({ text: m.text, start: m.start, end: m.end });
     cursor = m.end;
+    // If the removed span consumed all separating whitespace, deleting it
+    // would otherwise glue the surrounding words together (e.g. "and, like, "
+    // removed from "and, like, make" -> "andmake"). Re-insert one space.
+    const before = clean.slice(-1);
+    const after = verbatim[cursor] ?? "";
+    if (/\w/.test(before) && /\w/.test(after)) {
+      clean += " ";
+    }
   }
   clean += verbatim.slice(cursor);
 
