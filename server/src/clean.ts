@@ -48,6 +48,12 @@ Do NOT remove:
 - Any word that changes the meaning of the sentence if deleted
 - Content words, even if informal
 
+CRITICAL — each span must be minimal and contiguous filler ONLY. Never let one span bridge across a content word to reach a second filler later in the sentence, even if it "reads cleaner" that way. If two fillers are separated by real content, return TWO separate spans, not one that swallows what's between them.
+
+Example — "All right, so I just, you know, want to make sure it works":
+- WRONG: one span "so I just, you know, want" (deletes the real words "I just" and "want")
+- RIGHT: two spans "so " and ", you know," (keeps "I just" and "want" intact)
+
 Return your answer only via the remove_fillers tool. Each entry in spans_to_remove must be copied EXACTLY (character for character) from the transcript you were given, so it can be located with a plain substring search. If nothing should be removed, return an empty array.`;
 
 // Naive stand-in for the contextual disambiguation Claude does (PRD B4) —
@@ -94,11 +100,41 @@ export async function cleanTranscript(verbatim: string): Promise<CleanResult> {
   return applyRemovals(verbatim, spans);
 }
 
+// Vocabulary the model is allowed to delete unconditionally. Deliberately
+// narrow: it's cheaper to under-remove (leaves a filler in) than to
+// over-remove (silently deletes meaning) — PRD Epic B4 calls the latter the
+// disqualifying failure mode for this product.
+const FILLER_WORD = /^(um+|uh+|erm?|like|you|know|i|mean|kind|of|sort|actually|basically|so|right|well|okay|ok)$/i;
+
+/**
+ * A span is safe to delete if EITHER every word in it is drawn from the
+ * filler vocabulary above, OR it's a pure adjacent repetition (e.g. the
+ * first "the" in "the the") — checked by comparing it to the text
+ * immediately before/after it, since a repeated word can be anything and
+ * can't be vocabulary-listed. Anything else (e.g. a span that bridges two
+ * fillers across a real content word) is rejected outright rather than
+ * partially trusted.
+ */
+function isSafeSpan(span: string, verbatim: string, start: number, end: number): boolean {
+  const trimmed = span.trim();
+  if (trimmed.length === 0) return true;
+
+  const words = trimmed.split(/[^a-zA-Z']+/).filter(Boolean);
+  if (words.length > 0 && words.every((w) => FILLER_WORD.test(w))) return true;
+
+  const normalize = (s: string) => s.trim().toLowerCase().replace(/[^a-z' ]/g, "");
+  const len = end - start;
+  const before = verbatim.slice(Math.max(0, start - len), start);
+  const after = verbatim.slice(end, end + len);
+  return normalize(before) === normalize(trimmed) || normalize(after) === normalize(trimmed);
+}
+
 /**
  * Deletes only the exact substrings the model returned, in order of where they
  * occur in the source text. This is what makes "never substitutes/adds words"
  * a structural guarantee rather than a prompt instruction: the model can only
- * choose *which* verbatim spans disappear, never emit new text.
+ * choose *which* verbatim spans disappear, never emit new text — and even
+ * that choice is checked against isSafeSpan before it's trusted.
  */
 export function applyRemovals(verbatim: string, spans: string[]): CleanResult {
   const removedSpans: RemovedSpan[] = [];
@@ -114,6 +150,11 @@ export function applyRemovals(verbatim: string, spans: string[]): CleanResult {
     const from = searchFrom.get(span) ?? 0;
     const idx = verbatim.indexOf(span, from);
     if (idx === -1) continue;
+    if (!isSafeSpan(span, verbatim, idx, idx + span.length)) {
+      console.warn("[clean] rejected unsafe span (would have removed non-filler content):", JSON.stringify(span));
+      searchFrom.set(span, idx + span.length);
+      continue;
+    }
     matches.push({ start: idx, end: idx + span.length, text: span });
     searchFrom.set(span, idx + span.length);
   }
