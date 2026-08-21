@@ -103,12 +103,19 @@ export async function cleanTranscript(verbatim: string): Promise<CleanResult> {
 export function applyRemovals(verbatim: string, spans: string[]): CleanResult {
   const removedSpans: RemovedSpan[] = [];
 
+  // The model returns one array entry per occurrence, so identical filler
+  // text (e.g. "um, " said three times) appears as repeated identical
+  // strings. Each entry must resolve to its own occurrence, not the same
+  // first match every time — track a per-span-text search cursor.
+  const searchFrom = new Map<string, number>();
   const matches: { start: number; end: number; text: string }[] = [];
   for (const span of spans) {
     if (!span) continue;
-    const idx = verbatim.indexOf(span, 0);
+    const from = searchFrom.get(span) ?? 0;
+    const idx = verbatim.indexOf(span, from);
     if (idx === -1) continue;
     matches.push({ start: idx, end: idx + span.length, text: span });
+    searchFrom.set(span, idx + span.length);
   }
   matches.sort((a, b) => a.start - b.start);
 
