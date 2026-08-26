@@ -8,11 +8,16 @@ later stage not built yet.
 
 import asyncio
 import os
+import re
 import subprocess
 import sys
 
 from claude_agent_sdk import ClaudeAgentOptions, query
 from claude_agent_sdk.types import AssistantMessage, TextBlock
+
+RISK_PATTERN = re.compile(
+    r"^##\s*Risk:\s*(trivial|standard|sensitive)", re.IGNORECASE | re.MULTILINE
+)
 
 SYSTEM_PROMPT = """You are triaging a GitHub issue in this repository, on \
 its way to becoming a pull request. You do NOT write or edit any code in \
@@ -75,6 +80,11 @@ async def triage(issue_number: str, repo_root: str) -> str:
     return final_text
 
 
+def extract_risk(comment: str) -> str | None:
+    match = RISK_PATTERN.search(comment)
+    return match.group(1).lower() if match else None
+
+
 def main() -> None:
     issue_number = os.environ["ISSUE_NUMBER"]
     repo_root = os.environ.get("REPO_ROOT", os.getcwd())
@@ -85,6 +95,16 @@ def main() -> None:
         sys.exit(1)
 
     gh("issue", "comment", issue_number, "--body", comment)
+
+    # No risk line means triage stopped at ambiguity rather than reaching a
+    # plan — Gate 1 should not clear in that case.
+    risk = extract_risk(comment)
+    if risk is None:
+        return
+
+    gh("issue", "edit", issue_number, "--add-label", f"risk:{risk}")
+    if risk == "trivial":
+        gh("issue", "edit", issue_number, "--add-label", "agent:approved")
 
 
 if __name__ == "__main__":

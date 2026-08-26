@@ -1,0 +1,39 @@
+name: Agent approval gate
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  issues: write
+
+jobs:
+  approve:
+    # issue_comment fires for PR comments too (PRs are issues under the
+    # hood) — only act on comments on an actual issue.
+    if: >
+      github.event.issue.pull_request == null &&
+      startsWith(github.event.comment.body, '/approve-plan')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check commenter permission
+        id: perm
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          permission=$(gh api "repos/${{ github.repository }}/collaborators/${{ github.event.comment.user.login }}/permission" --jq .permission)
+          echo "permission=$permission" >> "$GITHUB_OUTPUT"
+
+      - name: Apply approval label
+        if: steps.perm.outputs.permission == 'admin' || steps.perm.outputs.permission == 'write'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh issue edit "${{ github.event.issue.number }}" --add-label agent:approved
+
+      - name: Reject unauthorized approval
+        if: steps.perm.outputs.permission != 'admin' && steps.perm.outputs.permission != 'write'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment "${{ github.event.issue.number }}" --body \
+            "Only maintainers can approve a plan — this comment didn't come from an authorized account."
