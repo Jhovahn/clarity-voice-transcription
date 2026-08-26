@@ -56,7 +56,7 @@ jobs:
           git add -A
           git commit -m "WIP: implement #${{ github.event.issue.number }} (oversized, needs review)"
           git push -u origin "agent/issue-${{ github.event.issue.number }}"
-          gh issue comment "${{ github.event.issue.number }}" --body \
+          gh issue comment "${{ github.event.issue.number }}" --repo "${{ github.repository }}" --body \
             "Implementation touched ${{ steps.diffsize.outputs.count }} files — more than expected for this ticket's scope. Pushed to \`agent/issue-${{ github.event.issue.number }}\` for manual review instead of opening a PR automatically."
 
       - name: Install and test — server
@@ -73,14 +73,6 @@ jobs:
         run: |
           npm ci
           npm run build
-
-      - name: Report CI failure
-        if: failure() && steps.diffsize.outputs.oversized == 'false'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh issue comment "${{ github.event.issue.number }}" --body \
-            "Implementation attempt failed CI (build/test) — see the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details. No PR opened."
 
       - name: Commit and push
         if: steps.diffsize.outputs.oversized == 'false'
@@ -104,3 +96,16 @@ jobs:
             --body "$(cat "$SUMMARY_PATH")
 
           Closes #${{ github.event.issue.number }}"
+
+      # Catch-all: fires if ANY earlier step failed, regardless of where —
+      # a step-specific "if: failure() && steps.x.outputs.y == 'z'" guard
+      # silently skips this when the failure happens before step x even
+      # runs, which is exactly the bug that made an implement.py crash
+      # invisible.
+      - name: Report unexpected failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment "${{ github.event.issue.number }}" --repo "${{ github.repository }}" --body \
+            "Implementation attempt failed — see the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details. No PR opened."

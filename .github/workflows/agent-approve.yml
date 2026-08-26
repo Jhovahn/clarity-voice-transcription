@@ -28,12 +28,15 @@ jobs:
         if: steps.perm.outputs.permission == 'admin' || steps.perm.outputs.permission == 'write'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh issue edit "${{ github.event.issue.number }}" --add-label agent:approved
+        run: |
+          gh issue edit "${{ github.event.issue.number }}" --repo "${{ github.repository }}" --add-label agent:approved
+          gh issue comment "${{ github.event.issue.number }}" --repo "${{ github.repository }}" --body \
+            "Approved — implementation starting."
 
       - name: Reject unauthorized approval
         if: steps.perm.outputs.permission != 'admin' && steps.perm.outputs.permission != 'write'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh issue comment "${{ github.event.issue.number }}" --body \
+          gh issue comment "${{ github.event.issue.number }}" --repo "${{ github.repository }}" --body \
             "Only maintainers can approve a plan — this comment didn't come from an authorized account."
