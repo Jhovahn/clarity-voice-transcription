@@ -6,6 +6,7 @@ on:
 
 permissions:
   issues: write
+  actions: write
 
 jobs:
   approve:
@@ -32,6 +33,12 @@ jobs:
           gh issue edit "${{ github.event.issue.number }}" --repo "${{ github.repository }}" --add-label agent:approved
           gh issue comment "${{ github.event.issue.number }}" --repo "${{ github.repository }}" --body \
             "Approved — implementation starting."
+          # A label applied with GITHUB_TOKEN doesn't fire other workflows'
+          # triggers (GitHub suppresses that, to prevent trigger loops) —
+          # so implementation has to be kicked off explicitly here rather
+          # than relying on agent-implement.yml's own "labeled" event.
+          gh workflow run agent-implement.yml --repo "${{ github.repository }}" \
+            -f issue_number="${{ github.event.issue.number }}"
 
       - name: Reject unauthorized approval
         if: steps.perm.outputs.permission != 'admin' && steps.perm.outputs.permission != 'write'
