@@ -75,9 +75,22 @@ a small service, etc.
   yet (GitHub Actions alone can't listen for Slack events), and the
   GitHub-native loop should be proven first.
 
-## Status
+## Status (as of 2026-08-25)
 
-Design only as of 2026-08-25 — no workflow or script code yet. First slice
-being built: triage-only (stages 1–3), tracked as its own issue so the
-agent's build follows the same issue → PR → merge discipline it will later
-enforce on others.
+- **Triage (stages 1–3)** — done and validated on real issues (`agent/triage.py`,
+  `.github/workflows/agent-triage.yml`). Applies `risk:<level>` and, for
+  `trivial` risk, self-clears Gate 1 by applying `agent:approved`.
+- **Gate 1 + implementation (stages 3–6)** — built, not yet run for real
+  (`agent/implement.py`, `.github/workflows/agent-approve.yml`,
+  `.github/workflows/agent-implement.yml`). `agent-approve.yml` turns an
+  authorized maintainer's `/approve-plan` comment into the same
+  `agent:approved` label triage applies automatically for trivial tickets;
+  `agent-implement.yml` triggers on that label, edits the tree, runs the
+  same build/test commands as `.github/workflows/ci.yml`, and only opens a
+  PR if that passes and the diff isn't larger than expected.
+- **Revision loop (stage 7) and Slack intake (Phase 2)** — not started.
+
+One-time repo setup needed before `agent-implement.yml`/`agent-approve.yml`
+can run: the `agent:approved`, `risk:trivial`, `risk:standard`, and
+`risk:sensitive` labels must exist on the repo (`gh issue edit --add-label`
+does not create missing labels).

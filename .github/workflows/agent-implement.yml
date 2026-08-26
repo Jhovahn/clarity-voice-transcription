@@ -1,0 +1,106 @@
+name: Agent implement
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  implement:
+    if: github.event.label.name == 'agent:approved'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r agent/requirements.txt
+
+      - name: Create branch
+        run: git checkout -b "agent/issue-${{ github.event.issue.number }}"
+
+      - name: Run implementation
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SUMMARY_PATH: ${{ runner.temp }}/summary.md
+        run: python agent/implement.py
+
+      - name: Check diff size
+        id: diffsize
+        run: |
+          count=$(git status --porcelain | wc -l)
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          if [ "$count" -gt 8 ]; then
+            echo "oversized=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "oversized=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push oversized diff for manual review
+        if: steps.diffsize.outputs.oversized == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "WIP: implement #${{ github.event.issue.number }} (oversized, needs review)"
+          git push -u origin "agent/issue-${{ github.event.issue.number }}"
+          gh issue comment "${{ github.event.issue.number }}" --body \
+            "Implementation touched ${{ steps.diffsize.outputs.count }} files — more than expected for this ticket's scope. Pushed to \`agent/issue-${{ github.event.issue.number }}\` for manual review instead of opening a PR automatically."
+
+      - name: Install and test — server
+        if: steps.diffsize.outputs.oversized == 'false'
+        working-directory: server
+        run: |
+          npm ci
+          npm run build
+          npm test
+
+      - name: Install and build — web
+        if: steps.diffsize.outputs.oversized == 'false'
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Report CI failure
+        if: failure() && steps.diffsize.outputs.oversized == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment "${{ github.event.issue.number }}" --body \
+            "Implementation attempt failed CI (build/test) — see the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details. No PR opened."
+
+      - name: Commit and push
+        if: steps.diffsize.outputs.oversized == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Implement #${{ github.event.issue.number }}"
+          git push -u origin "agent/issue-${{ github.event.issue.number }}"
+
+      - name: Open PR
+        if: steps.diffsize.outputs.oversized == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SUMMARY_PATH: ${{ runner.temp }}/summary.md
+        run: |
+          gh pr create \
+            --base main \
+            --head "agent/issue-${{ github.event.issue.number }}" \
+            --title "Implement #${{ github.event.issue.number }}" \
+            --body "$(cat "$SUMMARY_PATH")
+
+          Closes #${{ github.event.issue.number }}"
