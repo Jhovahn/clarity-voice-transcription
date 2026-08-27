@@ -105,6 +105,15 @@ def main() -> None:
     gh("issue", "edit", issue_number, "--add-label", f"risk:{risk}")
     if risk == "trivial":
         gh("issue", "edit", issue_number, "--add-label", "agent:approved")
+        # A label applied with GITHUB_TOKEN doesn't fire other workflows'
+        # triggers, so implementation has to be dispatched explicitly
+        # rather than relying on agent-implement.yml's own event.
+        repo = os.environ["GITHUB_REPOSITORY"]
+        gh(
+            "workflow", "run", "agent-implement.yml",
+            "--repo", repo,
+            "-f", f"issue_number={issue_number}",
+        )
 
 
 if __name__ == "__main__":

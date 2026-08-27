@@ -75,20 +75,32 @@ a small service, etc.
   yet (GitHub Actions alone can't listen for Slack events), and the
   GitHub-native loop should be proven first.
 
-## Status (as of 2026-08-25)
+## Status (as of 2026-08-26)
 
 - **Triage (stages 1–3)** — done and validated on real issues (`agent/triage.py`,
   `.github/workflows/agent-triage.yml`). Applies `risk:<level>` and, for
-  `trivial` risk, self-clears Gate 1 by applying `agent:approved`.
-- **Gate 1 + implementation (stages 3–6)** — built, not yet run for real
+  `trivial` risk, applies `agent:approved`.
+- **Gate 1 + implementation (stages 3–6)** — built and validated
   (`agent/implement.py`, `.github/workflows/agent-approve.yml`,
   `.github/workflows/agent-implement.yml`). `agent-approve.yml` turns an
   authorized maintainer's `/approve-plan` comment into the same
-  `agent:approved` label triage applies automatically for trivial tickets;
-  `agent-implement.yml` triggers on that label, edits the tree, runs the
-  same build/test commands as `.github/workflows/ci.yml`, and only opens a
-  PR if that passes and the diff isn't larger than expected.
+  `agent:approved` label triage applies automatically for trivial tickets.
+  `agent-implement.yml` edits the tree, runs the same build/test commands as
+  `.github/workflows/ci.yml`, and only opens a PR if that passes and the
+  diff isn't larger than expected.
 - **Revision loop (stage 7) and Slack intake (Phase 2)** — not started.
+
+**Correction:** `agent:approved` records that Gate 1 cleared, but it is
+*not* what triggers implementation, despite earlier notes here saying so.
+A label applied using the workflow's own `GITHUB_TOKEN` doesn't fire other
+workflows' event triggers — GitHub suppresses that specifically to prevent
+recursive trigger loops. `agent-implement.yml` is triggered by an explicit
+`workflow_dispatch` call (`gh workflow run agent-implement.yml -f
+issue_number=...`) made by whichever path applied the label — either
+`agent-approve.yml` or `triage.py`'s self-clear branch — right after
+applying it. Found this by testing: both approval paths applied the label
+and posted their confirmation comments successfully, but nothing downstream
+ever ran, with no error anywhere, since GitHub's suppression is silent.
 
 One-time repo setup needed before `agent-implement.yml`/`agent-approve.yml`
 can run: the `agent:approved`, `risk:trivial`, `risk:standard`, and
