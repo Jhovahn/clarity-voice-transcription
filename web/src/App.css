@@ -79,10 +79,15 @@ header h1 {
 .copy-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  padding: 6px 14px;
-  border-radius: 999px;
-  border: 1px solid #444;
+  /* No right padding: the pills' visible left edge sits exactly at
+     .result's 20px padding boundary (their border is their edge, with
+     no extra offset). This button is borderless, so without this its
+     icon would sit padding-width further in from the right than the
+     pills do from the left. */
+  padding: 7px 0 7px 7px;
+  border: none;
   background: transparent;
   cursor: pointer;
   color: inherit;
@@ -95,12 +100,10 @@ header h1 {
 }
 
 .copy-btn.copied {
-  border-color: #16a34a;
   color: #16a34a;
 }
 
 .copy-btn.failed {
-  border-color: #dc2626;
   color: #dc2626;
 }
 
