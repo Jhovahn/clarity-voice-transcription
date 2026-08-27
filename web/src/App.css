@@ -63,10 +63,58 @@ header h1 {
   padding: 20px;
 }
 
+.result-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
 .view-toggle {
   display: flex;
   gap: 4px;
-  margin-bottom: 16px;
+}
+
+.copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid #444;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+  font-size: 0.9rem;
+}
+
+.copy-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.copy-btn.copied {
+  border-color: #16a34a;
+  color: #16a34a;
+}
+
+.copy-btn.failed {
+  border-color: #dc2626;
+  color: #dc2626;
+}
+
+/* Visually hidden: the button label already shows the outcome, this is
+   the same feedback announced to screen readers. */
+.copy-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .view-toggle button {

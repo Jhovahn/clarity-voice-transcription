@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactElement } from "react";
+import { useEffect, useRef, useState, type ReactElement } from "react";
 import "./App.css";
 
 // Empty string in dev relies on Vite's /api proxy (vite.config.ts) to
@@ -8,6 +8,9 @@ const API_BASE = import.meta.env.VITE_API_BASE ?? "";
 
 type Status = "idle" | "recording" | "transcribing" | "cleaning" | "done" | "error";
 type View = "clean" | "verbatim";
+type CopyState = "idle" | "copied" | "failed";
+
+const COPY_FEEDBACK_MS = 2000;
 
 interface RemovedSpan {
   text: string;
@@ -36,6 +39,25 @@ function VerbatimView({ verbatim, removedSpans }: { verbatim: string; removedSpa
   return <p className="transcript verbatim">{parts}</p>;
 }
 
+// Inline SVGs rather than an icon dependency — matches the existing
+// ● Record / ■ Stop glyph approach and keeps deps to react/react-dom.
+function CopyIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
 export default function App() {
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -43,9 +65,19 @@ export default function App() {
   const [clean, setClean] = useState("");
   const [removedSpans, setRemovedSpans] = useState<RemovedSpan[]>([]);
   const [view, setView] = useState<View>("clean");
+  const [copyState, setCopyState] = useState<CopyState>("idle");
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clear any pending "copied" reset so an unmount (or a rapid re-click,
+  // which resets the timer below) can't fire a stale state update.
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
 
   async function startRecording() {
     setError(null);
@@ -106,6 +138,28 @@ export default function App() {
 
   const isBusy = status === "recording" || status === "transcribing" || status === "cleaning";
 
+  // Copy whatever the user is currently looking at, so the button can never
+  // contradict the view. Verbatim copies as plain text — the struck-through
+  // removed spans are included, since that's the full record on screen.
+  const displayedText = view === "clean" ? clean || verbatim : verbatim;
+
+  async function copyTranscript() {
+    if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current);
+    try {
+      // navigator.clipboard is undefined on non-secure origins, and
+      // writeText can reject if permission is denied.
+      if (!navigator.clipboard) throw new Error("Clipboard unavailable");
+      await navigator.clipboard.writeText(displayedText);
+      setCopyState("copied");
+    } catch {
+      setCopyState("failed");
+    }
+    copyTimerRef.current = setTimeout(() => {
+      copyTimerRef.current = null;
+      setCopyState("idle");
+    }, COPY_FEEDBACK_MS);
+  }
+
   return (
     <div className="app">
       <header>
@@ -131,14 +185,34 @@ export default function App() {
 
       {(verbatim || clean) && (
         <div className="result">
-          <div className="view-toggle">
-            <button className={view === "clean" ? "active" : ""} onClick={() => setView("clean")}>
-              Clean
-            </button>
-            <button className={view === "verbatim" ? "active" : ""} onClick={() => setView("verbatim")}>
-              Verbatim
+          <div className="result-actions">
+            <div className="view-toggle">
+              <button className={view === "clean" ? "active" : ""} onClick={() => setView("clean")}>
+                Clean
+              </button>
+              <button className={view === "verbatim" ? "active" : ""} onClick={() => setView("verbatim")}>
+                Verbatim
+              </button>
+            </div>
+
+            <button
+              className={`copy-btn${copyState !== "idle" ? ` ${copyState}` : ""}`}
+              onClick={() => void copyTranscript()}
+              disabled={!displayedText}
+              aria-label="Copy transcript"
+            >
+              {copyState === "copied" ? <CheckIcon /> : <CopyIcon />}
+              <span>{copyState === "copied" ? "Copied" : copyState === "failed" ? "Copy failed" : "Copy"}</span>
             </button>
           </div>
+
+          <p className="copy-status" role="status" aria-live="polite">
+            {copyState === "copied"
+              ? "Transcript copied to clipboard"
+              : copyState === "failed"
+                ? "Could not copy to clipboard"
+                : ""}
+          </p>
 
           {view === "clean" ? (
             <p className="transcript clean">{clean || verbatim}</p>
