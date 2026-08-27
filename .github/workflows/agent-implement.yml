@@ -58,7 +58,10 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "WIP: implement #${{ inputs.issue_number }} (oversized, needs review)"
-          git push -u origin "agent/issue-${{ inputs.issue_number }}"
+          # --force: this branch is owned entirely by this workflow, never
+          # built on by a human, so a retry should overwrite a prior
+          # attempt's push rather than fail as a non-fast-forward.
+          git push --force -u origin "agent/issue-${{ inputs.issue_number }}"
           gh issue comment "${{ inputs.issue_number }}" --repo "${{ github.repository }}" --body \
             "Implementation touched ${{ steps.diffsize.outputs.count }} files — more than expected for this ticket's scope. Pushed to \`agent/issue-${{ inputs.issue_number }}\` for manual review instead of opening a PR automatically."
 
@@ -84,7 +87,9 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "Implement #${{ inputs.issue_number }}"
-          git push -u origin "agent/issue-${{ inputs.issue_number }}"
+          # --force: see note on the oversized-diff push above — same
+          # bot-owned, retry-should-overwrite reasoning applies here.
+          git push --force -u origin "agent/issue-${{ inputs.issue_number }}"
 
       - name: Open PR
         if: steps.diffsize.outputs.oversized == 'false'
