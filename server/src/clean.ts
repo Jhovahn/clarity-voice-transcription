@@ -16,6 +16,15 @@ export interface RemovedSpan {
 export interface CleanResult {
   clean: string;
   removedSpans: RemovedSpan[];
+  /**
+   * Spans the model proposed but isSafeSpan refused to delete. They were NOT
+   * applied — the clean text is unaffected by them. Surfaced (rather than only
+   * logged) so a human review queue can inspect the cases where the model
+   * wanted to remove something outside the filler vocabulary. Offsets index
+   * into the original verbatim text, same convention as removedSpans. Always
+   * an array, never undefined.
+   */
+  flaggedSpans: RemovedSpan[];
 }
 
 const REMOVE_FILLERS_TOOL: Anthropic.Tool = {
@@ -142,6 +151,7 @@ function isSafeSpan(span: string, verbatim: string, start: number, end: number):
  */
 export function applyRemovals(verbatim: string, spans: string[]): CleanResult {
   const removedSpans: RemovedSpan[] = [];
+  const flaggedSpans: RemovedSpan[] = [];
 
   // The model returns one array entry per occurrence, so identical filler
   // text (e.g. "um, " said three times) appears as repeated identical
@@ -156,6 +166,7 @@ export function applyRemovals(verbatim: string, spans: string[]): CleanResult {
     if (idx === -1) continue;
     if (!isSafeSpan(span, verbatim, idx, idx + span.length)) {
       console.warn("[clean] rejected unsafe span (would have removed non-filler content):", JSON.stringify(span));
+      flaggedSpans.push({ text: span, start: idx, end: idx + span.length });
       searchFrom.set(span, idx + span.length);
       continue;
     }
@@ -194,5 +205,5 @@ export function applyRemovals(verbatim: string, spans: string[]): CleanResult {
     clean = clean[0].toUpperCase() + clean.slice(1);
   }
 
-  return { clean, removedSpans };
+  return { clean, removedSpans, flaggedSpans };
 }
