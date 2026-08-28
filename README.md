@@ -33,3 +33,7 @@ npm run dev              # http://localhost:5173, proxies /api to the server
 ## Contents
 
 - [`docs/PRD.md`](docs/PRD.md) — Product Requirements Document: personas, epics, detailed user stories with acceptance criteria, non-functional requirements, risks, and phased roadmap.
+
+## Author
+
+Built by [jhovahn](https://www.linkedin.com/in/jhovahn).
