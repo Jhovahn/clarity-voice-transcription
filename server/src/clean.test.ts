@@ -44,11 +44,13 @@ describe("applyRemovals", () => {
     // "want" along with the two actual fillers. This must never be applied.
     const verbatim =
       "All right, so I just, you know, want to make sure that everything works as expected.";
-    const { clean, removedSpans } = applyRemovals(verbatim, [
+    const { clean, removedSpans, flaggedSpans } = applyRemovals(verbatim, [
       "so I just, you know, want",
     ]);
     expect(clean).toBe(verbatim);
     expect(removedSpans).toHaveLength(0);
+    expect(flaggedSpans).toHaveLength(1);
+    expect(flaggedSpans[0].text).toBe("so I just, you know, want");
   });
 
   it("still allows the correctly-split version of the same sentence", () => {
@@ -84,8 +86,53 @@ describe("applyRemovals", () => {
 
   it("ignores a span that doesn't literally appear in the transcript", () => {
     const verbatim = "This is a clean sentence.";
-    const { clean, removedSpans } = applyRemovals(verbatim, ["not present"]);
+    const { clean, removedSpans, flaggedSpans } = applyRemovals(verbatim, ["not present"]);
     expect(clean).toBe(verbatim);
     expect(removedSpans).toHaveLength(0);
+    // Never located in the transcript, so it isn't evidence the model tried to
+    // delete real content — not a review-queue candidate.
+    expect(flaggedSpans).toHaveLength(0);
+  });
+});
+
+describe("applyRemovals flaggedSpans", () => {
+  it("reports a rejected span with offsets that slice back to the exact original text", () => {
+    // Real case found in testing: the model proposed "was like, ", which is
+    // rejected because "was" is not in the filler vocabulary.
+    const verbatim = "And then he was like, that is not going to work.";
+    const { clean, removedSpans, flaggedSpans } = applyRemovals(verbatim, ["was like, "]);
+    expect(clean).toBe(verbatim);
+    expect(removedSpans).toHaveLength(0);
+    expect(flaggedSpans).toHaveLength(1);
+    expect(flaggedSpans[0].text).toBe("was like, ");
+    expect(verbatim.slice(flaggedSpans[0].start, flaggedSpans[0].end)).toBe("was like, ");
+  });
+
+  it("applies the safe span and flags the unsafe one when both are proposed together", () => {
+    const verbatim = "Um, he was like, that is fine.";
+    const { clean, removedSpans, flaggedSpans } = applyRemovals(verbatim, [
+      "Um, ",
+      "was like, ",
+    ]);
+    expect(clean).toBe("He was like, that is fine.");
+    expect(removedSpans).toHaveLength(1);
+    expect(removedSpans[0].text).toBe("Um, ");
+    expect(flaggedSpans).toHaveLength(1);
+    expect(flaggedSpans[0].text).toBe("was like, ");
+    expect(verbatim.slice(flaggedSpans[0].start, flaggedSpans[0].end)).toBe("was like, ");
+  });
+
+  it("is empty when no spans are given", () => {
+    const { flaggedSpans } = applyRemovals("This transcript has no filler words in it.", []);
+    expect(flaggedSpans).toEqual([]);
+  });
+
+  it("is empty when every proposed span is safe", () => {
+    const { clean, flaggedSpans } = applyRemovals(
+      "So, um, this is a test recording.",
+      ["So, um, "]
+    );
+    expect(clean).toBe("This is a test recording.");
+    expect(flaggedSpans).toEqual([]);
   });
 });
