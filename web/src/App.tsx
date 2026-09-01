@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import "./App.css";
+import { buildCleanText } from "./textOps";
 
 // Empty string in dev relies on Vite's /api proxy (vite.config.ts) to
 // localhost:8787. In production there's no dev proxy, so the deployed
@@ -83,6 +84,7 @@ export default function App() {
   const [clean, setClean] = useState("");
   const [removedSpans, setRemovedSpans] = useState<RemovedSpan[]>([]);
   const [flaggedSpans, setFlaggedSpans] = useState<RemovedSpan[]>([]);
+  const [flaggedDecisions, setFlaggedDecisions] = useState<Record<number, "remove" | "keep">>({});
   const [view, setView] = useState<View>("clean");
   const [copyState, setCopyState] = useState<CopyState>("idle");
 
@@ -104,6 +106,7 @@ export default function App() {
     setClean("");
     setRemovedSpans([]);
     setFlaggedSpans([]);
+    setFlaggedDecisions({});
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
@@ -157,22 +160,32 @@ export default function App() {
     }
   }
 
-  // Intentionally inert: this ticket only renders the review list. Wiring
-  // these to actually update the Clean/Verbatim views is issue #21's sibling
-  // subtask (subtask 3 of #17), so a decision here has no visible effect yet.
-  function handleFlaggedRemove(span: RemovedSpan) {
-    console.log("[flagged] would remove:", span);
+  function handleFlaggedRemove(index: number) {
+    setFlaggedDecisions((prev) => ({ ...prev, [index]: "remove" }));
   }
-  function handleFlaggedKeep(span: RemovedSpan) {
-    console.log("[flagged] would keep:", span);
+  function handleFlaggedKeep(index: number) {
+    setFlaggedDecisions((prev) => ({ ...prev, [index]: "keep" }));
   }
 
   const isBusy = status === "recording" || status === "transcribing" || status === "cleaning";
 
+  // removedSpans and flaggedSpans share the same coordinate system --
+  // offsets into the original verbatim transcript -- so a user-approved
+  // flagged removal can be combined with the server's confidently-removed
+  // spans and re-deleted the same way, with no new /api/clean call.
+  const approvedFlaggedRemovals = flaggedSpans.filter((_, i) => flaggedDecisions[i] === "remove");
+  const pendingFlaggedSpans = flaggedSpans
+    .map((span, i) => ({ span, i }))
+    .filter(({ i }) => flaggedDecisions[i] === undefined);
+  const combinedRemovedSpans = [...removedSpans, ...approvedFlaggedRemovals];
+  // Provably equivalent to the server's `clean` when there are zero
+  // approved flagged removals -- same deterministic algorithm, same inputs.
+  const effectiveClean = verbatim ? buildCleanText(verbatim, combinedRemovedSpans) : clean;
+
   // Copy whatever the user is currently looking at, so the button can never
   // contradict the view. Verbatim copies as plain text — the struck-through
   // removed spans are included, since that's the full record on screen.
-  const displayedText = view === "clean" ? clean || verbatim : verbatim;
+  const displayedText = view === "clean" ? effectiveClean || verbatim : verbatim;
 
   async function copyTranscript() {
     if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current);
@@ -246,9 +259,9 @@ export default function App() {
           </p>
 
           {view === "clean" ? (
-            <p className="transcript clean">{clean || verbatim}</p>
+            <p className="transcript clean">{effectiveClean || verbatim}</p>
           ) : (
-            <VerbatimView verbatim={verbatim} removedSpans={removedSpans} />
+            <VerbatimView verbatim={verbatim} removedSpans={combinedRemovedSpans} />
           )}
 
           <p className="disclaimer">
@@ -257,23 +270,23 @@ export default function App() {
               : "Struck-through text was removed by the clean pass. Nothing is deleted from the record."}
           </p>
 
-          {flaggedSpans.length > 0 && (
+          {pendingFlaggedSpans.length > 0 && (
             <div className="flagged-review">
               <h2 className="flagged-review-heading">Flagged for review</h2>
               <p className="flagged-review-note">
                 The cleanup wasn't confident enough to remove these automatically — review each one.
               </p>
               <ul className="flagged-list">
-                {flaggedSpans.map((span, i) => (
+                {pendingFlaggedSpans.map(({ span, i }) => (
                   <li key={i} className="flagged-item">
                     <p className="flagged-context">
                       <FlaggedContext verbatim={verbatim} span={span} />
                     </p>
                     <div className="flagged-actions">
-                      <button className="flagged-btn remove" onClick={() => handleFlaggedRemove(span)}>
+                      <button className="flagged-btn remove" onClick={() => handleFlaggedRemove(i)}>
                         Remove
                       </button>
-                      <button className="flagged-btn keep" onClick={() => handleFlaggedKeep(span)}>
+                      <button className="flagged-btn keep" onClick={() => handleFlaggedKeep(i)}>
                         Keep
                       </button>
                     </div>
