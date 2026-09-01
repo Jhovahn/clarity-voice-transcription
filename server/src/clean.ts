@@ -142,6 +142,113 @@ function isSafeSpan(span: string, verbatim: string, start: number, end: number):
   return normalize(before) === normalize(trimmed) || normalize(after) === normalize(trimmed);
 }
 
+interface WordToken {
+  text: string;
+  start: number; // offset within the span string, not verbatim
+  isWord: boolean;
+}
+
+function tokenize(span: string): WordToken[] {
+  const pattern = /[a-zA-Z']+|[^a-zA-Z']+/g;
+  const tokens: WordToken[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = pattern.exec(span)) !== null) {
+    tokens.push({ text: m[0], start: m.index, isWord: /^[a-zA-Z']+$/.test(m[0]) });
+  }
+  return tokens;
+}
+
+/**
+ * A span isSafeSpan rejected is usually rejected because it bundles a real
+ * word in with genuine filler (e.g. "was like, " -- "was" isn't filler
+ * vocabulary, "like," is). Rather than flag the whole bundle as one
+ * all-or-nothing unit, find the maximal contiguous runs of filler-vocabulary
+ * words within it -- each run absorbs the punctuation/whitespace
+ * immediately before and after it, up to (not past) the next non-filler
+ * word -- and return them as independent sub-spans with absolute offsets
+ * into verbatim. Two adjacent filler words (e.g. "you know") merge into one
+ * run rather than producing overlapping sub-spans.
+ *
+ * Returns [] when the span contains no filler-vocabulary words at all (e.g.
+ * a failed repetition-check candidate on an unrelated word) -- callers
+ * should fall back to flagging the original span whole in that case, since
+ * there's nothing safe to extract from it.
+ */
+// These four are only filler as half of a specific two-word idiom ("you
+// know", "i mean") -- alone, or next to an unrelated filler word like "so",
+// "you"/"know"/"I"/"mean" are ordinary content words. isSafeSpan's coarse
+// all-or-nothing check never had to care, because a lone occurrence was
+// already surrounded by other non-filler words that forced rejection
+// anyway. Fine-grained extraction has to care: without this guard, a bundle
+// like "so I just" would merge "so" and "I" into one run (both individually
+// match FILLER_WORD) and offer to delete the actual word "I".
+const PAIR_PARTNER: Record<string, string> = { you: "know", know: "you", i: "mean", mean: "i" };
+
+function canMergeAdjacentFillerWords(current: string, next: string): boolean {
+  const cur = current.toLowerCase();
+  const nxt = next.toLowerCase();
+  const curIsPaired = cur in PAIR_PARTNER;
+  const nxtIsPaired = nxt in PAIR_PARTNER;
+  if (!curIsPaired && !nxtIsPaired) return true; // two ordinary standalone-safe filler words
+  if (curIsPaired && nxtIsPaired) return PAIR_PARTNER[cur] === nxt; // must be exact idiom partners
+  return false; // one paired-only word next to an unrelated filler word: never merge
+}
+
+function extractFillerSubSpans(span: string, spanStart: number): RemovedSpan[] {
+  const tokens = tokenize(span);
+  const subSpans: RemovedSpan[] = [];
+  // Two runs can end up positionally adjacent with only one separator token
+  // between them (e.g. "so" and "you know" in "so you know this" -- they
+  // don't merge into one run, since "so"+"you" isn't a valid idiom pair,
+  // but they're still next to each other). Without tracking what's already
+  // been claimed, both runs would try to absorb that same separator token
+  // as their own trailing/leading grab, producing overlapping spans.
+  let lastConsumedIdx = -1;
+
+  let i = 0;
+  while (i < tokens.length) {
+    if (!tokens[i].isWord || !FILLER_WORD.test(tokens[i].text)) {
+      i += 1;
+      continue;
+    }
+
+    let runStartIdx = i;
+    let j = i;
+    let wordCount = 1;
+    while (
+      j + 2 < tokens.length &&
+      !tokens[j + 1].isWord &&
+      tokens[j + 2].isWord &&
+      FILLER_WORD.test(tokens[j + 2].text) &&
+      canMergeAdjacentFillerWords(tokens[j].text, tokens[j + 2].text)
+    ) {
+      j += 2;
+      wordCount += 1;
+    }
+
+    if (wordCount === 1 && tokens[i].text.toLowerCase() in PAIR_PARTNER) {
+      i += 1;
+      continue;
+    }
+
+    if (runStartIdx > 0 && !tokens[runStartIdx - 1].isWord && runStartIdx - 1 > lastConsumedIdx) {
+      runStartIdx -= 1;
+    }
+    let runEndIdx = j;
+    if (runEndIdx + 1 < tokens.length && !tokens[runEndIdx + 1].isWord) runEndIdx += 1;
+
+    const first = tokens[runStartIdx];
+    const last = tokens[runEndIdx];
+    const text = span.slice(first.start, last.start + last.text.length);
+    subSpans.push({ text, start: spanStart + first.start, end: spanStart + last.start + last.text.length });
+
+    lastConsumedIdx = runEndIdx;
+    i = runEndIdx + 1;
+  }
+
+  return subSpans;
+}
+
 /**
  * Deletes only the exact substrings the model returned, in order of where they
  * occur in the source text. This is what makes "never substitutes/adds words"
@@ -166,7 +273,8 @@ export function applyRemovals(verbatim: string, spans: string[]): CleanResult {
     if (idx === -1) continue;
     if (!isSafeSpan(span, verbatim, idx, idx + span.length)) {
       console.warn("[clean] rejected unsafe span (would have removed non-filler content):", JSON.stringify(span));
-      flaggedSpans.push({ text: span, start: idx, end: idx + span.length });
+      const subSpans = extractFillerSubSpans(span, idx);
+      flaggedSpans.push(...(subSpans.length > 0 ? subSpans : [{ text: span, start: idx, end: idx + span.length }]));
       searchFrom.set(span, idx + span.length);
       continue;
     }
