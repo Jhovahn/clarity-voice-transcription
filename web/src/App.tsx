@@ -39,6 +39,24 @@ function VerbatimView({ verbatim, removedSpans }: { verbatim: string; removedSpa
   return <p className="transcript verbatim">{parts}</p>;
 }
 
+const FLAGGED_CONTEXT_RADIUS = 40;
+
+// Shows a flagged span in a window of surrounding verbatim text, so the user
+// can tell what it refers to without re-reading the whole transcript.
+function FlaggedContext({ verbatim, span }: { verbatim: string; span: RemovedSpan }) {
+  const windowStart = Math.max(0, span.start - FLAGGED_CONTEXT_RADIUS);
+  const windowEnd = Math.min(verbatim.length, span.end + FLAGGED_CONTEXT_RADIUS);
+  return (
+    <>
+      {windowStart > 0 && "…"}
+      {verbatim.slice(windowStart, span.start)}
+      <mark className="flagged-span">{verbatim.slice(span.start, span.end)}</mark>
+      {verbatim.slice(span.end, windowEnd)}
+      {windowEnd < verbatim.length && "…"}
+    </>
+  );
+}
+
 // Inline SVGs rather than an icon dependency — matches the existing
 // ● Record / ■ Stop glyph approach and keeps deps to react/react-dom.
 function CopyIcon() {
@@ -64,6 +82,7 @@ export default function App() {
   const [verbatim, setVerbatim] = useState("");
   const [clean, setClean] = useState("");
   const [removedSpans, setRemovedSpans] = useState<RemovedSpan[]>([]);
+  const [flaggedSpans, setFlaggedSpans] = useState<RemovedSpan[]>([]);
   const [view, setView] = useState<View>("clean");
   const [copyState, setCopyState] = useState<CopyState>("idle");
 
@@ -84,6 +103,7 @@ export default function App() {
     setVerbatim("");
     setClean("");
     setRemovedSpans([]);
+    setFlaggedSpans([]);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
@@ -126,14 +146,25 @@ export default function App() {
         body: JSON.stringify({ verbatim: verbatimText }),
       });
       if (!cleanRes.ok) throw new Error("Cleanup failed.");
-      const { clean: cleanText, removedSpans: spans } = await cleanRes.json();
+      const { clean: cleanText, removedSpans: spans, flaggedSpans: flagged } = await cleanRes.json();
       setClean(cleanText);
       setRemovedSpans(spans);
+      setFlaggedSpans(flagged ?? []);
       setStatus("done");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
       setStatus("error");
     }
+  }
+
+  // Intentionally inert: this ticket only renders the review list. Wiring
+  // these to actually update the Clean/Verbatim views is issue #21's sibling
+  // subtask (subtask 3 of #17), so a decision here has no visible effect yet.
+  function handleFlaggedRemove(span: RemovedSpan) {
+    console.log("[flagged] would remove:", span);
+  }
+  function handleFlaggedKeep(span: RemovedSpan) {
+    console.log("[flagged] would keep:", span);
   }
 
   const isBusy = status === "recording" || status === "transcribing" || status === "cleaning";
@@ -225,6 +256,32 @@ export default function App() {
               ? "This is a derived, edited version. Switch to Verbatim to see exactly what was removed."
               : "Struck-through text was removed by the clean pass. Nothing is deleted from the record."}
           </p>
+
+          {flaggedSpans.length > 0 && (
+            <div className="flagged-review">
+              <h2 className="flagged-review-heading">Flagged for review</h2>
+              <p className="flagged-review-note">
+                The cleanup wasn't confident enough to remove these automatically — review each one.
+              </p>
+              <ul className="flagged-list">
+                {flaggedSpans.map((span, i) => (
+                  <li key={i} className="flagged-item">
+                    <p className="flagged-context">
+                      <FlaggedContext verbatim={verbatim} span={span} />
+                    </p>
+                    <div className="flagged-actions">
+                      <button className="flagged-btn remove" onClick={() => handleFlaggedRemove(span)}>
+                        Remove
+                      </button>
+                      <button className="flagged-btn keep" onClick={() => handleFlaggedKeep(span)}>
+                        Keep
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -150,3 +150,81 @@ header h1 {
   font-size: 0.85rem;
   color: #888;
 }
+
+.flagged-review {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #333;
+}
+
+.flagged-review-heading {
+  font-size: 1rem;
+  margin: 0 0 4px;
+}
+
+.flagged-review-note {
+  font-size: 0.85rem;
+  color: #888;
+  margin: 0 0 16px;
+}
+
+.flagged-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.flagged-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px;
+  border: 1px solid #444;
+  border-radius: 8px;
+}
+
+.flagged-context {
+  flex: 1;
+  margin: 0;
+  line-height: 1.5;
+  font-size: 0.95rem;
+}
+
+/* Distinct from .removed-span (already struck through, confidently
+   removed) -- this marks text that's still pending a decision. */
+.flagged-span {
+  background: rgba(234, 179, 8, 0.25);
+  color: inherit;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+
+.flagged-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.flagged-btn {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid #444;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+  font-size: 0.85rem;
+}
+
+.flagged-btn.remove:hover {
+  border-color: #dc2626;
+  color: #dc2626;
+}
+
+.flagged-btn.keep:hover {
+  border-color: #16a34a;
+  color: #16a34a;
+}
