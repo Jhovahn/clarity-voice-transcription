@@ -43,3 +43,49 @@ export function buildCleanText(verbatim: string, spans: Span[]): string {
   }
   return clean;
 }
+
+export interface WordToken {
+  text: string;
+  start: number; // verbatim-space offset, not offset within the kept text
+  end: number;
+  isWord: boolean;
+}
+
+/**
+ * Walks verbatim, skipping any already-removed spans, and tokenizes the
+ * remaining ("kept") text into words and separators -- each token carries
+ * its true verbatim-space offset. Needed for manual deletion mode: a click
+ * on a rendered word has to be translated back into a {start,end} span that
+ * fits the same buildCleanText/VerbatimView pipeline every other removal
+ * source already uses, not just spliced out of whatever string happens to
+ * be on screen.
+ */
+export function tokenizeKeptText(verbatim: string, alreadyRemoved: Span[]): WordToken[] {
+  const sorted = [...alreadyRemoved].sort((a, b) => a.start - b.start);
+  const tokens: WordToken[] = [];
+  const wordPattern = /[a-zA-Z']+|[^a-zA-Z']+/g;
+
+  function tokenizeRange(rangeStart: number, rangeEnd: number) {
+    const slice = verbatim.slice(rangeStart, rangeEnd);
+    const pattern = new RegExp(wordPattern);
+    let m: RegExpExecArray | null;
+    while ((m = pattern.exec(slice)) !== null) {
+      tokens.push({
+        text: m[0],
+        start: rangeStart + m.index,
+        end: rangeStart + m.index + m[0].length,
+        isWord: /^[a-zA-Z']+$/.test(m[0]),
+      });
+    }
+  }
+
+  let cursor = 0;
+  for (const span of sorted) {
+    if (span.start < cursor) continue; // overlapping/duplicate, skip
+    tokenizeRange(cursor, span.start);
+    cursor = span.end;
+  }
+  tokenizeRange(cursor, verbatim.length);
+
+  return tokens;
+}

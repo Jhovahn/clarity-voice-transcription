@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import "./App.css";
-import { buildCleanText } from "./textOps";
+import { buildCleanText, tokenizeKeptText } from "./textOps";
 
 // Empty string in dev relies on Vite's /api proxy (vite.config.ts) to
 // localhost:8787. In production there's no dev proxy, so the deployed
@@ -58,6 +58,72 @@ function FlaggedContext({ verbatim, span }: { verbatim: string; span: RemovedSpa
   );
 }
 
+// Renders the kept portion of verbatim (AI-removed spans excluded entirely)
+// with every word individually clickable. A manually-deleted word stays
+// visible, struck-through, rather than disappearing -- clicking it again
+// removes it from manualDeletions, so the action is reversible in place
+// instead of a one-way edit. Deletion-only, same as the rest of this app:
+// clicking never inserts or rewrites text, only toggles membership of an
+// existing verbatim span in manualDeletions.
+//
+// A word still pending a decision in the Flagged for review list is
+// rendered marked (same visual language as FlaggedContext), not clickable
+// here -- it already has exactly one place to be acted on. Without this, a
+// pending-flagged word would show up as an ordinary clickable word too,
+// letting the same span end up in both manualDeletions and
+// approvedFlaggedRemovals at once.
+function EditableClean({
+  verbatim,
+  aiRemovedSpans,
+  pendingFlaggedRanges,
+  manualDeletions,
+  onToggleWord,
+}: {
+  verbatim: string;
+  aiRemovedSpans: RemovedSpan[];
+  pendingFlaggedRanges: RemovedSpan[];
+  manualDeletions: RemovedSpan[];
+  onToggleWord: (span: RemovedSpan) => void;
+}) {
+  const tokens = tokenizeKeptText(verbatim, aiRemovedSpans);
+  const firstWordIdx = tokens.findIndex((t) => t.isWord);
+  const isDeleted = (start: number, end: number) =>
+    manualDeletions.some((s) => s.start === start && s.end === end);
+  const isPending = (start: number, end: number) =>
+    pendingFlaggedRanges.some((s) => start < s.end && end > s.start);
+
+  return (
+    <p className="transcript clean editable">
+      {tokens.map((token, i) => {
+        if (isPending(token.start, token.end)) {
+          return (
+            <mark key={i} className="flagged-span" title="Pending a decision in Flagged for review, below">
+              {token.text}
+            </mark>
+          );
+        }
+        if (!token.isWord) {
+          return <span key={i}>{token.text}</span>;
+        }
+        const displayText =
+          i === firstWordIdx ? token.text[0].toUpperCase() + token.text.slice(1) : token.text;
+        const deleted = isDeleted(token.start, token.end);
+        return (
+          <button
+            key={i}
+            type="button"
+            className={`editable-word${deleted ? " deleted" : ""}`}
+            onClick={() => onToggleWord({ text: token.text, start: token.start, end: token.end })}
+            title={deleted ? "Click to restore this word" : "Click to remove this word"}
+          >
+            {displayText}
+          </button>
+        );
+      })}
+    </p>
+  );
+}
+
 // Inline SVGs rather than an icon dependency — matches the existing
 // ● Record / ■ Stop glyph approach and keeps deps to react/react-dom.
 function CopyIcon() {
@@ -85,6 +151,8 @@ export default function App() {
   const [removedSpans, setRemovedSpans] = useState<RemovedSpan[]>([]);
   const [flaggedSpans, setFlaggedSpans] = useState<RemovedSpan[]>([]);
   const [flaggedDecisions, setFlaggedDecisions] = useState<Record<number, "remove" | "keep">>({});
+  const [manualDeletions, setManualDeletions] = useState<RemovedSpan[]>([]);
+  const [editMode, setEditMode] = useState(false);
   const [view, setView] = useState<View>("clean");
   const [copyState, setCopyState] = useState<CopyState>("idle");
 
@@ -107,6 +175,8 @@ export default function App() {
     setRemovedSpans([]);
     setFlaggedSpans([]);
     setFlaggedDecisions({});
+    setManualDeletions([]);
+    setEditMode(false);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
@@ -167,6 +237,18 @@ export default function App() {
     setFlaggedDecisions((prev) => ({ ...prev, [index]: "keep" }));
   }
 
+  // Toggle: clicking an already-manually-deleted word restores it, so the
+  // action is reversible rather than one-way. Membership is checked by
+  // exact verbatim offset, not text, since the same word can appear
+  // multiple times at different positions.
+  function handleToggleManualWord(span: RemovedSpan) {
+    setManualDeletions((prev) => {
+      const idx = prev.findIndex((s) => s.start === span.start && s.end === span.end);
+      if (idx >= 0) return prev.filter((_, i) => i !== idx);
+      return [...prev, span];
+    });
+  }
+
   const isBusy = status === "recording" || status === "transcribing" || status === "cleaning";
 
   // removedSpans and flaggedSpans share the same coordinate system --
@@ -177,9 +259,13 @@ export default function App() {
   const pendingFlaggedSpans = flaggedSpans
     .map((span, i) => ({ span, i }))
     .filter(({ i }) => flaggedDecisions[i] === undefined);
-  const combinedRemovedSpans = [...removedSpans, ...approvedFlaggedRemovals];
+  // Spans the AI is responsible for -- these are what edit mode excludes
+  // from its clickable word stream (restoring them is out of #27's scope).
+  const aiRemovedSpans = [...removedSpans, ...approvedFlaggedRemovals];
+  const combinedRemovedSpans = [...aiRemovedSpans, ...manualDeletions];
   // Provably equivalent to the server's `clean` when there are zero
-  // approved flagged removals -- same deterministic algorithm, same inputs.
+  // approved flagged removals and zero manual deletions -- same
+  // deterministic algorithm, same inputs.
   const effectiveClean = verbatim ? buildCleanText(verbatim, combinedRemovedSpans) : clean;
 
   // Copy whatever the user is currently looking at, so the button can never
@@ -239,6 +325,12 @@ export default function App() {
               </button>
             </div>
 
+            {view === "clean" && (
+              <button className={`edit-toggle${editMode ? " active" : ""}`} onClick={() => setEditMode((e) => !e)}>
+                {editMode ? "Done" : "Edit"}
+              </button>
+            )}
+
             <button
               className={`copy-btn${copyState !== "idle" ? ` ${copyState}` : ""}`}
               onClick={() => void copyTranscript()}
@@ -259,15 +351,27 @@ export default function App() {
           </p>
 
           {view === "clean" ? (
-            <p className="transcript clean">{effectiveClean || verbatim}</p>
+            editMode ? (
+              <EditableClean
+                verbatim={verbatim}
+                aiRemovedSpans={aiRemovedSpans}
+                pendingFlaggedRanges={pendingFlaggedSpans.map(({ span }) => span)}
+                manualDeletions={manualDeletions}
+                onToggleWord={handleToggleManualWord}
+              />
+            ) : (
+              <p className="transcript clean">{effectiveClean || verbatim}</p>
+            )
           ) : (
             <VerbatimView verbatim={verbatim} removedSpans={combinedRemovedSpans} />
           )}
 
           <p className="disclaimer">
-            {view === "clean"
-              ? "This is a derived, edited version. Switch to Verbatim to see exactly what was removed."
-              : "Struck-through text was removed by the clean pass. Nothing is deleted from the record."}
+            {editMode
+              ? "Click any word to remove or restore it. Nothing here is ever rewritten, only deleted."
+              : view === "clean"
+                ? "This is a derived, edited version. Switch to Verbatim to see exactly what was removed."
+                : "Struck-through text was removed by the clean pass. Nothing is deleted from the record."}
           </p>
 
           {pendingFlaggedSpans.length > 0 && (
