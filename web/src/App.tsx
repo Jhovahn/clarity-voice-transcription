@@ -65,14 +65,23 @@ function FlaggedContext({ verbatim, span }: { verbatim: string; span: RemovedSpa
 // instead of a one-way edit. Deletion-only, same as the rest of this app:
 // clicking never inserts or rewrites text, only toggles membership of an
 // existing verbatim span in manualDeletions.
+//
+// A word still pending a decision in the Flagged for review list is
+// rendered marked (same visual language as FlaggedContext), not clickable
+// here -- it already has exactly one place to be acted on. Without this, a
+// pending-flagged word would show up as an ordinary clickable word too,
+// letting the same span end up in both manualDeletions and
+// approvedFlaggedRemovals at once.
 function EditableClean({
   verbatim,
   aiRemovedSpans,
+  pendingFlaggedRanges,
   manualDeletions,
   onToggleWord,
 }: {
   verbatim: string;
   aiRemovedSpans: RemovedSpan[];
+  pendingFlaggedRanges: RemovedSpan[];
   manualDeletions: RemovedSpan[];
   onToggleWord: (span: RemovedSpan) => void;
 }) {
@@ -80,10 +89,19 @@ function EditableClean({
   const firstWordIdx = tokens.findIndex((t) => t.isWord);
   const isDeleted = (start: number, end: number) =>
     manualDeletions.some((s) => s.start === start && s.end === end);
+  const isPending = (start: number, end: number) =>
+    pendingFlaggedRanges.some((s) => start < s.end && end > s.start);
 
   return (
     <p className="transcript clean editable">
       {tokens.map((token, i) => {
+        if (isPending(token.start, token.end)) {
+          return (
+            <mark key={i} className="flagged-span" title="Pending a decision in Flagged for review, below">
+              {token.text}
+            </mark>
+          );
+        }
         if (!token.isWord) {
           return <span key={i}>{token.text}</span>;
         }
@@ -337,6 +355,7 @@ export default function App() {
               <EditableClean
                 verbatim={verbatim}
                 aiRemovedSpans={aiRemovedSpans}
+                pendingFlaggedRanges={pendingFlaggedSpans.map(({ span }) => span)}
                 manualDeletions={manualDeletions}
                 onToggleWord={handleToggleManualWord}
               />
