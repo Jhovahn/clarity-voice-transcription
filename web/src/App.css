@@ -134,10 +134,50 @@ header h1 {
   font-weight: 600;
 }
 
+.edit-toggle {
+  margin-left: auto;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid #444;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+  font-size: 0.9rem;
+}
+
+.edit-toggle.active {
+  background: #444;
+  font-weight: 600;
+}
+
 .transcript {
   line-height: 1.6;
   font-size: 1.05rem;
   white-space: pre-wrap;
+}
+
+.transcript.editable .editable-word {
+  padding: 0 1px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.transcript.editable .editable-word:hover {
+  background: rgba(220, 38, 38, 0.15);
+}
+
+.transcript.editable .editable-word.deleted {
+  color: #888;
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.transcript.editable .editable-word.deleted:hover {
+  background: rgba(22, 163, 74, 0.15);
 }
 
 .removed-span {
