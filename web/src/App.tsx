@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import "./App.css";
-import { buildCleanText, tokenizeKeptText } from "./textOps";
+import { buildCleanText, tokenizeKeptText, type WordToken } from "./textOps";
 
 // Empty string in dev relies on Vite's /api proxy (vite.config.ts) to
 // localhost:8787. In production there's no dev proxy, so the deployed
@@ -58,6 +58,24 @@ function FlaggedContext({ verbatim, span }: { verbatim: string; span: RemovedSpa
   );
 }
 
+// Extends a word's deletion span to also absorb one immediately-following
+// comma, if present -- mirrors how the AI's own proposed spans already
+// include their own filler punctuation (the model is instructed to include
+// "surrounding filler punctuation like commas"). A plain word-only click
+// can't do that on its own, since tokenizeKeptText treats words and
+// punctuation as separate tokens -- without this, deleting just the word
+// leaves its trailing comma orphaned, e.g. "This is good, honestly." minus
+// "good" alone becomes "This is, honestly.", not "This is honestly."
+function computeDeletionSpan(verbatim: string, tokens: WordToken[], i: number): RemovedSpan {
+  const token = tokens[i];
+  let end = token.end;
+  const next = tokens[i + 1];
+  if (next && !next.isWord && next.text.startsWith(",")) {
+    end = token.end + 1;
+  }
+  return { text: verbatim.slice(token.start, end), start: token.start, end };
+}
+
 // Renders the kept portion of verbatim (AI-removed spans excluded entirely)
 // with every word individually clickable. A manually-deleted word stays
 // visible, struck-through, rather than disappearing -- clicking it again
@@ -87,15 +105,16 @@ function EditableClean({
 }) {
   const tokens = tokenizeKeptText(verbatim, aiRemovedSpans);
   const firstWordIdx = tokens.findIndex((t) => t.isWord);
-  const isDeleted = (start: number, end: number) =>
-    manualDeletions.some((s) => s.start === start && s.end === end);
-  const isPending = (start: number, end: number) =>
-    pendingFlaggedRanges.some((s) => start < s.end && end > s.start);
+  // A manually-deleted word's stored span can extend past the word token
+  // itself (see computeDeletionSpan, which absorbs a trailing comma) --
+  // so membership has to be an overlap check, not exact-match.
+  const isCovered = (spans: RemovedSpan[], start: number, end: number) =>
+    spans.some((s) => start < s.end && end > s.start);
 
   return (
     <p className="transcript clean editable">
       {tokens.map((token, i) => {
-        if (isPending(token.start, token.end)) {
+        if (isCovered(pendingFlaggedRanges, token.start, token.end)) {
           return (
             <mark key={i} className="flagged-span" title="Pending a decision in Flagged for review, below">
               {token.text}
@@ -103,17 +122,32 @@ function EditableClean({
           );
         }
         if (!token.isWord) {
+          // If the preceding word's deletion absorbed this separator's
+          // leading comma (see computeDeletionSpan), show that one
+          // character struck through too, so the preview matches what
+          // buildCleanText will actually produce -- otherwise a comma that
+          // reads as "still there" would silently disappear on Done.
+          const commaClaimed =
+            token.text.startsWith(",") && isCovered(manualDeletions, token.start, token.start + 1);
+          if (commaClaimed) {
+            return (
+              <span key={i}>
+                <span className="claimed-comma">,</span>
+                {token.text.slice(1)}
+              </span>
+            );
+          }
           return <span key={i}>{token.text}</span>;
         }
         const displayText =
           i === firstWordIdx ? token.text[0].toUpperCase() + token.text.slice(1) : token.text;
-        const deleted = isDeleted(token.start, token.end);
+        const deleted = isCovered(manualDeletions, token.start, token.end);
         return (
           <button
             key={i}
             type="button"
             className={`editable-word${deleted ? " deleted" : ""}`}
-            onClick={() => onToggleWord({ text: token.text, start: token.start, end: token.end })}
+            onClick={() => onToggleWord(computeDeletionSpan(verbatim, tokens, i))}
             title={deleted ? "Click to restore this word" : "Click to remove this word"}
           >
             {displayText}

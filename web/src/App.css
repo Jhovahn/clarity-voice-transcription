@@ -189,6 +189,15 @@ header h1 {
   background: rgba(22, 163, 74, 0.15);
 }
 
+/* A comma absorbed into an adjacent word's deletion -- shown struck through
+   but not independently clickable, since the word button is what toggles
+   it (see computeDeletionSpan). */
+.transcript.editable .claimed-comma {
+  color: #888;
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
 .removed-span {
   color: #888;
   opacity: 0.7;
