@@ -157,12 +157,21 @@ header h1 {
 }
 
 .transcript.editable .editable-word {
+  /* Reset button defaults that fight plain inline text flow -- buttons are
+     display:inline-block with their own UA-stylesheet margin/line-height by
+     default, which can visually eat or misalign the whitespace-only
+     separator nodes sitting between adjacent word buttons. Forcing this to
+     behave like a plain inline span (but still clickable) fixes it. */
+  display: inline;
+  margin: 0;
   padding: 0 1px;
   border: none;
   border-radius: 3px;
   background: transparent;
   color: inherit;
   font: inherit;
+  line-height: inherit;
+  white-space: inherit;
   cursor: pointer;
 }
 
