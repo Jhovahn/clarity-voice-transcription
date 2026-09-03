@@ -308,10 +308,12 @@ export function applyRemovals(verbatim: string, spans: string[]): CleanResult {
     .replace(/\s{2,}/g, " ")
     .replace(/^[,.\s]+/, "")
     .trim();
-  // Capitalize first letter for readability.
-  if (clean.length > 0) {
-    clean = clean[0].toUpperCase() + clean.slice(1);
-  }
+  // Capitalize the start of every sentence, not just the very first
+  // character -- a removed span can be a sentence-starting word (the model
+  // is explicitly instructed to treat sentence-initial "so" as filler), and
+  // whatever follows the removal needs to pick up capitalization the
+  // deleted word was carrying.
+  clean = clean.replace(/(^|[.!?]\s+)([a-z])/g, (_m, prefix: string, letter: string) => prefix + letter.toUpperCase());
 
   return { clean, removedSpans, flaggedSpans };
 }

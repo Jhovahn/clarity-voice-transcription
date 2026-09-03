@@ -221,3 +221,23 @@ describe("applyRemovals flaggedSpans splitting (#23)", () => {
     expect(reapplied.clean).toBe("All right, I just want to make sure that everything works as expected.");
   });
 });
+
+describe("applyRemovals re-capitalizes every sentence, not just the first (#29)", () => {
+  it("capitalizes the word that becomes sentence-initial after a removal", () => {
+    // Regression test: the model is explicitly instructed to treat
+    // sentence-starting "so" as filler, so this isn't hypothetical -- any
+    // multi-sentence transcript can hit it.
+    const { clean } = applyRemovals("Yeah. So this works.", ["So "]);
+    expect(clean).toBe("Yeah. This works.");
+  });
+
+  it("only touches the affected sentence, leaving other sentences and mid-sentence words alone", () => {
+    const { clean } = applyRemovals("Yeah. So this works. And so does this.", ["So "]);
+    expect(clean).toBe("Yeah. This works. And so does this.");
+  });
+
+  it("still capitalizes the very first character of the whole transcript", () => {
+    const { clean } = applyRemovals("So, um, this is a test recording.", ["So, um, "]);
+    expect(clean).toBe("This is a test recording.");
+  });
+});

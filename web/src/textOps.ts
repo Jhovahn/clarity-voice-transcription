@@ -38,9 +38,12 @@ export function buildCleanText(verbatim: string, spans: Span[]): string {
     .replace(/\s{2,}/g, " ")
     .replace(/^[,.\s]+/, "")
     .trim();
-  if (clean.length > 0) {
-    clean = clean[0].toUpperCase() + clean.slice(1);
-  }
+  // Capitalize the start of every sentence, not just the very first
+  // character -- mirrors the same fix in server/src/clean.ts's
+  // applyRemovals. Recomputed fresh from verbatim + spans on every call, so
+  // restoring a manually-deleted sentence-starting word naturally reverts
+  // capitalization too, with no separate undo logic needed.
+  clean = clean.replace(/(^|[.!?]\s+)([a-z])/g, (_m, prefix, letter) => prefix + letter.toUpperCase());
   return clean;
 }
 
